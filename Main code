@@ -1,0 +1,517 @@
+#include <WiFi.h>
+#include <ESPmDNS.h>
+#include <WebServer.h>        // Use WebServer for ESP32
+#include <HTTPUpdateServer.h>
+#include <WebSocketsServer.h>
+#include <math.h>
+
+// =======================================================================
+// === USER SETTINGS (Configure your network here)
+// =======================================================================
+
+// --- Wi-Fi Network Setup (Connect to your home router) ---
+const char* ssid = "YOUR_WIFI_SSID";         // <-- PUT YOUR WIFI NAME HERE
+const char* password = "YOUR_WIFI_PASSWORD"; // <-- PUT YOUR WIFI PASSWORD HERE
+const char *hostname = "ESPAbohisham";
+
+// --- Web Update (OTA) Setup ---
+const char* username = "ESP-Abohisham";
+const char* user_password = "7141";
+
+// =======================================================================
+// === HARDWARE PINS (From your control sketch)
+// =======================================================================
+#define IN1 25            // Curtain
+#define IN2 26            // Curtain
+#define FAN_PIN 17        // Fan
+#define LED_PIN 14        // LED
+#define MOTOR_PIN 33      // Motor
+#define THERMISTOR_PIN 34 // Temp Sensor
+
+// Calibration offset
+float tempOffset = -7.0;
+
+// =======================================================================
+// === SERVER OBJECTS
+// =======================================================================
+WebServer httpServer(80);
+HTTPUpdateServer httpUpdater;
+WebSocketsServer webSocket = WebSocketsServer(81);
+
+
+// =======================================================================
+// === PAGE 1: SHARED CSS (Stored in Flash Memory)
+// =======================================================================
+const char STYLE_CSS[] PROGMEM = R"rawliteral(
+<style>
+  /* --- Global Style --- */
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    margin: 0;
+    background-color: #f6f6f6;
+  }
+  * { box-sizing: border-box; }
+
+  /* --- Tab Bar Navigation (From your Home page) --- */
+  .tabbar {
+    overflow: hidden;
+    background-color: #000000;
+    opacity: 0.9;
+    position: sticky;
+    top: 0;
+    box-shadow: 0 6px 20px 0 rgba(0, 0, 0, 0.60);
+    width: 100%;
+    z-index: 100;
+  }
+  .tabbar a {
+    float: left;
+    display: block;
+    color: white;
+    text-align: center;
+    padding: 14px 20px;
+    text-decoration: none;
+    font-size: 17px;
+  }
+  .tabbar a:hover {
+    background-color: #0036FF;
+    color: white;
+    border-radius: 25px;
+    transition: 0.3s;
+  }
+  .tabbar a.active {
+    background-color: #0036FF;
+    color: white;
+    border-radius: 15px;
+  }
+ 
+  /* --- Search Bar (From your Home page) --- */
+  #myInput {
+    background-position: 10px 12px;
+    background-repeat: no-repeat;
+    background-color: #FFFFFF;
+    border-radius: 5px;
+    width: auto;
+    height: 7px;
+    font-size: 16px;
+    float: right;
+    border: 1px solid blue;
+    margin-top: 4px;
+    margin-right: 10px;
+    padding: 14px 20px;
+  }
+
+  /* --- Home Page Content (From your Home page) --- */
+  #myUL {
+    list-style-type: none;
+    display: block;
+    margin: auto;
+    padding: 10px;
+  }
+  #myUL li a {
+    background-color: #f6f6f6;
+    padding: 5px 30px 10px 30px;
+    text-decoration: none;
+    font-size: 18px;
+    color: black;
+    border-radius: 10px;
+    margin: 5px;
+    vertical-align: top;
+    width: auto;
+    float: left;
+    text-align: center;
+    line-height: 1.8;
+    transition: box-shadow .3s;
+    box-shadow: 0 0 11px rgba(33,33,33,.1);
+  }
+  #myUL li a:hover:not(.header) {
+    box-shadow: 0 0 11px rgba(33,33,33,.4);
+  }
+  .content {
+    border-radius: 7px;
+    max-height: 150px;
+    cursor: pointer;
+    display: block;
+    margin: auto;
+  }
+ 
+  /* --- About Me Page (From your About page) --- */
+  .about-content {
+    padding: 20px;
+    max-width: 800px;
+    margin: auto;
+  }
+
+  /* --- Control Panel (From your Control sketch) --- */
+  .control-body { text-align: center; background: #111; color: #fff; padding-bottom: 30px; }
+  .control-body button {
+    width: 120px; height: 50px; margin: 10px;
+    font-size: 18px; border: none; border-radius: 10px;
+    color: white; cursor: pointer;
+  }
+  .control-body .open { background: #28a745; }
+  .control-body .close { background: #dc3545; }
+  .control-body .stop { background: #ffc107; color: black; }
+  .control-body .slider { width: 300px; margin: 15px auto; }
+  .control-body .section {
+    margin-top: 40px;
+    padding: 20px;
+    border-top: 2px solid #333;
+  }
+  .control-body .motorBtn {
+    background: #007bff;
+    width: 150px;
+  }
+  .control-body h2, .control-body p { margin: 10px 0; }
+
+</style>
+)rawliteral";
+
+// =======================================================================
+// === PAGE 2: SHARED NAVIGATION BAR (Stored in Flash Memory)
+// =======================================================================
+const char NAVBAR_HTML[] PROGMEM = R"rawliteral(
+<div class="tabbar">
+  <a href="/">Home</a>
+  <a href="/about">About Me</a>
+  <a href="/control">Control Panel</a>
+  <input type="text" id="myInput" onkeyup="myFunction()" placeholder="Search.." name="Search">
+</div>
+)rawliteral";
+
+// =======================================================================
+// === PAGE 3: HOME PAGE (Stored in Flash Memory)
+// =======================================================================
+const char HOME_PAGE[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Home</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  %STYLE_CSS%
+</head>
+<body>
+  %NAVBAR_HTML%
+
+  <div class="content" id="myUL">
+    <li>
+      <a><img class="content" src="https://content.codecademy.com/courses/web-101/web101-image_brownbear.jpg" />Bear</a>
+    </li>
+    <li>
+      <a><img class="content" src="https://content.codecademy.com/courses/web-101/web101-image_brownbear.jpg" />Bear2</a>
+    </li>
+    <li>
+      <a>
+        <video class="content" src="https://content.codecademy.com/courses/freelance-1/unit-1/lesson-2/htmlcss1-vid_brown-bear.mp4" controls>Video not supported</video>Bear video
+      </a>
+    </li>
+    <li><a href="#">Eman</a></li>
+    <li><a href="#">Shahed</a></li>
+    <li><a href="#">Rayan</a></li>
+    <li><a href="#">Bob</a></li>
+    <li><a href="#">Thanaa</a></li>
+    <li><a href="#">Hisham</a></li>
+    <li><a href="#">Cindy</a></li>
+    <li><a href="#">Hello</a></li>
+    <li><a href="#">Bye</a></li>
+    <li><a href="#">Abohisham</a></li>
+    <li><a href="#">Ronaldo</a></li>
+    <li><a href="https://animedao.to/" target="_blank">Anime</a></li>
+  </div>
+
+  <script>
+    // Search function for the Home page
+    function myFunction() {
+      var input, filter, ul, li, a, i, txtValue;
+      input = document.getElementById("myInput");
+      if (!input) return; // Don't run if search bar isn't on this page
+     
+      filter = input.value.toUpperCase();
+      ul = document.getElementById("myUL");
+      li = ul.getElementsByTagName("li");
+      for (i = 0; i < li.length; i++) {
+        a = li[i].getElementsByTagName("a")[0];
+        txtValue = a.textContent || a.innerText;
+        if (txtValue.toUpperCase().indexOf(filter) > -1) {
+          li[i].style.display = "";
+        } else {
+          li[i].style.display = "none";
+        }
+      }
+    }
+  </script>
+</body>
+</html>
+)rawliteral";
+
+// =======================================================================
+// === PAGE 4: ABOUT ME PAGE (Stored in Flash Memory)
+// =======================================================================
+const char ABOUT_PAGE[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html>
+<head>
+  <title>About Me</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  %STYLE_CSS%
+</head>
+<body>
+  %NAVBAR_HTML%
+
+  <div class="about-content">
+    <h1>About Me</h1>
+    <h3>Mohamad Amin Ghanoum</h3>
+    <img src="https://content.codecademy.com/courses/web-101/htmlcss1-img_brown-bear-2.jpeg" style="max-width:100%%; border-radius: 10px;">
+    <p>Hey, my name is Mohamad, and there's little I find more exciting than bears! I've spent most of my young life traveling to the edges of Earth to take videos of these wonderful creatures. <br /><br />
+      Family, Country, Bears, <br /><br />
+      Mohamad
+    </p>
+  </div>
+ 
+  <script>
+    // This script is only for the home page, so we make it do nothing here
+    function myFunction() { }
+    // De-activate search bar on this page
+    document.addEventListener("DOMContentLoaded", function() {
+       var search = document.getElementById("myInput");
+       if(search) { search.style.display = 'none'; }
+    });
+  </script>
+</body>
+</html>
+)rawliteral";
+
+// =======================================================================
+// === PAGE 5: CONTROL PANEL PAGE (Stored in Flash Memory)
+// =======================================================================
+const char CONTROL_PAGE[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html>
+<head>
+  <title>ESPAbohisham Control</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  %STYLE_CSS%
+</head>
+<body class="control-body">
+  %NAVBAR_HTML%
+
+  <h2>Curtain Control</h2>
+  <button class="open" onclick="send('OPEN')">Open</button>
+  <button class="close" onclick="send('CLOSE')">Close</button>
+  <button class="stop" onclick="send('STOP')">Stop</button>
+
+  <div class="section">
+    <h2>Temperature & Fan Control</h2>
+    <p>Temperature: <span id="temp">--</span> °C</p>
+    <input type="range" min="0" max="255" value="0" class="slider"
+      id="fanSlider" oninput="updateFan(this.value)">
+    <p>Fan Speed: <span id="fanValue">0</span></p>
+  </div>
+
+  <div class="section">
+    <h2>LED Brightness</h2>
+    <input type="range" min="0" max="255" value="0" class="slider"
+      id="ledSlider" oninput="updateLED(this.value)">
+    <p>LED Value: <span id="ledValue">0</span></p>
+  </div>
+
+  <div class="section">
+    <h2>Motor Control</h2>
+    <button class="motorBtn" onclick="toggleMotor()">Motor: <span id="motorState">OFF</span></button>
+  </div>
+
+  <script>
+    // This script is only for the home page, so we make it do nothing here
+    function myFunction() { }
+    // De-activate search bar on this page
+    document.addEventListener("DOMContentLoaded", function() {
+       var search = document.getElementById("myInput");
+       if(search) { search.style.display = 'none'; }
+    });
+
+    // --- WebSocket Script ---
+    var connection = new WebSocket('ws://' + location.hostname + ':81/');
+    var motor = 0;
+
+    connection.onmessage = function(event) {
+      if (event.data.startsWith("TEMP:")) {
+        document.getElementById("temp").innerText = event.data.substring(5);
+      }
+    }
+   
+    connection.onerror = function (error) {
+      console.log('WebSocket Error ', error);
+    };
+
+    function send(cmd) {
+      console.log("Sending: " + cmd);
+      connection.send(cmd);
+    }
+
+    function updateFan(value) {
+      document.getElementById("fanValue").innerText = value;
+      connection.send("FAN:" + value);
+    }
+
+    function updateLED(value) {
+      document.getElementById("ledValue").innerText = value;
+      connection.send("LED:" + value);
+    }
+
+    function toggleMotor() {
+      motor = !motor;
+      document.getElementById("motorState").innerText = motor ? "ON" : "OFF";
+      connection.send("MOTOR:" + (motor ? 1 : 0));
+    }
+
+    // Request temperature every 2 seconds
+    setInterval(() => {
+      if(connection.readyState === 1) {
+        connection.send("GET_TEMP");
+      }
+    }, 2000);
+  </script>
+</body>
+</html>
+)rawliteral";
+
+
+// =======================================================================
+// === HELPER FUNCTION TO PROCESS PAGE TEMPLATES
+// =======================================================================
+String processor(const String& var) {
+  if (var == "STYLE_CSS") {
+    return FPSTR(STYLE_CSS);
+  }
+  if (var == "NAVBAR_HTML") {
+    // Set the "active" class based on the page
+    String page = httpServer.uri();
+    String nav = FPSTR(NAVBAR_HTML);
+    if (page == "/" || page == "/home.html") {
+      nav.replace("href=\"/\"", "href=\"/\" class=\"active\"");
+    } else if (page == "/about" || page == "/aboutme.html") {
+      nav.replace("href=\"/about\"", "href=\"/about\" class=\"active\"");
+    } else if (page == "/control" || page == "/control.html") {
+      nav.replace("href=\"/control\"", "href=\"/control\" class=\"active\"");
+    }
+    return nav;
+  }
+  return String();
+}
+
+// =======================================================================
+// === BACKEND LOGIC (From your control sketch)
+// =======================================================================
+
+float readTemperatureRaw() {
+  int analogValue = analogRead(THERMISTOR_PIN);
+  if (analogValue <= 0) analogValue = 1;
+  if (analogValue >= 4095) analogValue = 4094;
+
+  float resistance = (10000.0 * analogValue) / (4095.0 - analogValue);
+  float steinhart;
+  steinhart = resistance / 10000.0;
+  steinhart = log(steinhart);
+  steinhart /= 3950.0;
+  steinhart += 1.0 / (25.0 + 273.15);
+  steinhart = 1.0 / steinhart;
+  steinhart -= 273.15;
+  return steinhart;
+}
+
+float readTemperatureCalibrated() {
+  return readTemperatureRaw() + tempOffset;
+}
+
+// Handle WebSocket messages
+      float cal = readTemperatureCalibrated();
+      String msg = "TEMP:" + String(cal, 1);
+      webSocket.sendTXT(num, msg);
+    }
+    else if (command.startsWith("CAL:")) {
+      String val = command.substring(4);
+      val.trim();
+      tempOffset = val.toFloat();
+      webSocket.sendTXT(num, String("CAL_OK:") + String(tempOffset, 2));
+      Serial.print("Calibration set to: ");
+      Serial.println(tempOffset);
+    }
+  }
+}
+
+// =======================================================================
+// === SETUP (Initialize everything)
+// =======================================================================
+void setup() {
+  Serial.begin(115200);
+  Serial.println("\nBooting Sketch...");
+
+  // --- Setup Pins ---
+  pinMode(IN1, OUTPUT);
+  pinMode(IN2, OUTPUT);
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, LOW);
+  pinMode(FAN_PIN, OUTPUT);
+  analogWrite(FAN_PIN, 0);
+  pinMode(LED_PIN, OUTPUT);
+  analogWrite(LED_PIN, 0);
+  pinMode(MOTOR_PIN, OUTPUT);
+  digitalWrite(MOTOR_PIN, LOW);
+  pinMode(THERMISTOR_PIN, INPUT);
+
+  // --- Connect to Wi-Fi ---
+  WiFi.mode(WIFI_STA); // Connect to home router
+  WiFi.begin(ssid, password);
+  while (WiFi.waitForConnectResult() != WL_CONNECTED) {
+    Serial.println("WiFi failed, retrying.");
+    delay(1000);
+  }
+  Serial.println("WiFi connected!");
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
+
+  // --- Start mDNS ---
+  if (MDNS.begin(hostname)) {
+    Serial.println("mDNS responder started");
+  }
+
+  // --- Setup Web Page Handlers ---
+  httpServer.on("/", HTTP_GET, []() {
+    httpServer.send_P(200, "text/html", HOME_PAGE, processor);
+  });
+  httpServer.on("/home.html", HTTP_GET, []() {
+    httpServer.send_P(200, "text/html", HOME_PAGE, processor);
+  });
+  httpServer.on("/about", HTTP_GET, []() {
+    httpServer.send_P(200, "text/html", ABOUT_PAGE, processor);
+  });
+  httpServer.on("/aboutme.html", HTTP_GET, []() {
+    httpServer.send_P(200, "text/html", ABOUT_PAGE, processor);
+  });
+  httpServer.on("/control", HTTP_GET, []() {
+    httpServer.send_P(200, "text/html", CONTROL_PAGE, processor);
+  });
+  httpServer.on("/control.html", HTTP_GET, []() {
+    httpServer.send_P(200, "text/html", CONTROL_PAGE, processor);
+  });
+
+  // --- Setup OTA Update Server ---
+  // This adds the /update page automatically
+  httpUpdater.setup(&httpServer, username, user_password);
+ 
+  // --- Start Servers ---
+  httpServer.begin();
+  webSocket.begin();
+  webSocket.onEvent(webSocketEvent);
+ 
+  MDNS.addService("http", "tcp", 80);
+  Serial.printf("\nHTTP Server started. Open http://%s.local/ in your browser\n", hostname);
+  Serial.printf("HTTP Update Server ready. Open http://%s.local/update in your browser\n", hostname);
+}
+
+// =======================================================================
+// === LOOP (Run all server clients)
+// =======================================================================
+void loop() {
+  httpServer.handleClient();
+  webSocket.loop();
+}
