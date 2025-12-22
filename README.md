@@ -2,7 +2,7 @@
 ESP32 - Smart home project:
 --------------------------------
 Project description:
-This project is a custom-built ESP32-based control to automate a curtain motor and manage multiple devices in my room such as a fan, LED strip, temperature sensor, and additional motors. This is buit using a custom PCB designed in KiCad, using only salvaged components from old electronics. 
+This project is a custom-built ESP32-based control to automate a curtain motor and manage multiple devices in my room such as a fan, LED strip, temperature sensor, and additional motors. This is buit using a custom PCB designed in KiCad, using only salvaged components from old electronics but also used Arduino uno for the code
 
 The project focuses mainly on hardware design, PCB routing and building in Kicad, reusing components, and experimentation, but not so much software work.
 "Note, the main code is not fully written by me, and it is not the main focus of this project. It is only here for reference or experimenting."
