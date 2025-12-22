@@ -5,6 +5,6 @@ I have not bought anything, but the copper-clad plates for this. Therefore my fo
 
 "Note, the main code is not fully written by me, and it is not the main focus of this project. It is only here for reference or experimenting."
 
-I have through this project experimented and tried different things in the Kicad app
+I have through this project experimented and tried different things in the Kicad app. (The arduino IDE app has also been used for the code)
 
 
