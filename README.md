@@ -1,0 +1,1 @@
+In this project i hav made a mini smart-home where I added a motor that i extracted from a robot vacuum to the string of the curtain. This motor is precision one with the gears inside, so when i use a microcontroller 
