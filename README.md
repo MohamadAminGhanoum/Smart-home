@@ -15,7 +15,7 @@ I wanted to make this project to:
 - Searching schematics for components and reusing the components from devices
 - Build something practical that i can use in my everyday life.
 
-Below is the schematic diagram
+Below is the schematic diagram: Note: im missing 2 resistors, since i could not find the exact symbol for the motor driver that was in the robot-vacuum board.
 <img width="574" height="469" alt="Screenshot 2025-12-23 at 22 29 42" src="https://github.com/user-attachments/assets/ba5900f4-e3a7-4d67-969e-463a5b390d80" />
 
 
