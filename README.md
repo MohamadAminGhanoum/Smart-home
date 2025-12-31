@@ -26,6 +26,7 @@ This is the wiring diagram of the pcb:
 <img width="794" height="556" alt="Final pcb" src="https://github.com/user-attachments/assets/03d8aa9e-94bc-45c0-a1e8-d62a09732ae8" />
 
 
+These are all materials that i used in the project, u can also access it in the repo
 ![Screenshot_31-12-2025_161940_docs google com](https://github.com/user-attachments/assets/e6924fbf-e70e-44c1-8849-92bfb6caae08)
 
 
