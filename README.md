@@ -30,7 +30,13 @@ These are all materials that i used in the project, u can also access it in the 
 ![Screenshot_31-12-2025_161940_docs google com](https://github.com/user-attachments/assets/e6924fbf-e70e-44c1-8849-92bfb6caae08)
 
 
+Final reflection
+-------------------------------------------
+I think that this project for me honestly was difficult. This was my first time using kicad to create a pcb and schematic, and i did some issues, like forgetting to make a schematic and jumping directly to pcb. I had to do many retries to get to my final result. I did much experimenting with trasferring the ink from paper to pcb. I ended up printing the pcb-layout on the paper 3 times through printer, since i twas a normal paper
 
+I further also did not log the hours that i took me to find the ldo voltage regulator from a motherboard, and the time taken to research the different parts from the robot vacuum, because i dont think this counts.
+
+I finally did enjoy making this project, and it was both entertaining and taught me how pcbs are made. If i had to redo this, I think i would put money in getting glossy paper, because they would have made this a lot easier by transferring the ink from the printer directly to pcb.
 
 This project was overall successful, although I had some errors and mistakes. It hepled me with learning how to make PCBs, how to reuse unknow parts by lookin in their schematics, how to connect the ESP32, and at last it needed a lot of creativity to work.
 
